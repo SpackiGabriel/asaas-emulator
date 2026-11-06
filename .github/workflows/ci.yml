@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t asaas-emulator .
+      - name: Smoke test the image
+        run: |
+          docker run -d --name emulator -p 8000:8000 asaas-emulator
+          for i in $(seq 1 30); do curl -fs localhost:8000/_emulator/health && break; sleep 1; done
+          curl -fs -H 'access_token: ci' localhost:8000/v3/finance/balance
+
+  # Runs the contract suite against the real Asaas sandbox. Needs a repository secret
+  # named ASAAS_SANDBOX_API_KEY; skipped on forks and when the secret is absent.
+  conformance:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    env:
+      ASAAS_CONFORMANCE_API_KEY: ${{ secrets.ASAAS_SANDBOX_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Contract tests against api-sandbox.asaas.com
+        if: env.ASAAS_CONFORMANCE_API_KEY != ''
+        env:
+          ASAAS_CONFORMANCE_BASE_URL: https://api-sandbox.asaas.com
+        run: pytest -m conformance -v

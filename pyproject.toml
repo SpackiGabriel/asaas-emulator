@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asaas-emulator"
+version = "0.1.0"
+description = "A stateful, deterministic local emulator of the Asaas payments API for development and CI."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Gabriel Spacki" }]
+keywords = ["asaas", "payments", "pix", "boleto", "emulator", "testing", "mock", "brazil"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing :: Mocking",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+    "segno>=1.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+asaas-emulator = "asaas_emulator.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asaas_emulator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "conformance: tests that must pass against both the emulator and the real Asaas sandbox",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query"]
