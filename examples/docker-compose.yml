@@ -1,0 +1,29 @@
+# Run your application next to the emulator.
+#
+#   docker compose -f examples/docker-compose.yml up
+#
+# Your app reads ASAAS_BASE_URL instead of hardcoding api-sandbox.asaas.com, and
+# receives webhooks from the emulator at the URL you register through POST /v3/webhooks
+# (for example http://app:3000/webhooks/asaas from inside this network).
+
+services:
+  asaas:
+    build: ..
+    ports:
+      - "8000:8000"
+    environment:
+      ASAAS_EMULATOR_DATABASE: /data/asaas.db # keep state across restarts
+    volumes:
+      - asaas-data:/data
+
+  # app:
+  #   build: .
+  #   environment:
+  #     ASAAS_BASE_URL: http://asaas:8000
+  #     ASAAS_API_KEY: $$aact_local
+  #   depends_on:
+  #     asaas:
+  #       condition: service_healthy
+
+volumes:
+  asaas-data:

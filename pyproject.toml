@@ -9,14 +9,25 @@ description = "A stateful, deterministic local emulator of the Asaas payments AP
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Gabriel Spacki" }]
-keywords = ["asaas", "payments", "pix", "boleto", "emulator", "testing", "mock", "brazil"]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "asaas", "payments", "pix", "boleto", "emulator", "mock-server", "testing",
+    "contract-testing", "webhooks", "fintech", "brazil",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Testing",
     "Topic :: Software Development :: Testing :: Mocking",
 ]
+
 dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
@@ -29,6 +40,11 @@ dev = ["pytest>=8", "ruff>=0.5"]
 
 [project.scripts]
 asaas-emulator = "asaas_emulator.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/SpackiGabriel/asaas-emulator"
+Issues = "https://github.com/SpackiGabriel/asaas-emulator/issues"
+Changelog = "https://github.com/SpackiGabriel/asaas-emulator/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/asaas_emulator"]

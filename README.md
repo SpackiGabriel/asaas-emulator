@@ -1,22 +1,138 @@
+<div align="center">
+
 # asaas-emulator
 
-A stateful, deterministic local emulator of the [Asaas](https://www.asaas.com) payments API (v3), for development and CI.
+**Test your Asaas integration offline.**<br>
+Pix, boleto, balances, payouts and real webhook deliveries, in a local server that behaves like the real API.
 
-Point your integration at `http://localhost:8000` instead of `https://api-sandbox.asaas.com` and you get customers, Pix and boleto charges, a real account balance, Pix transfers and signed webhook deliveries, with no account, no network and no flakiness. It works with any language, because it is just an HTTP server.
+[![CI](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/ci.yml/badge.svg)](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+**English** · [Português](README.pt-BR.md)
+
+</div>
 
 ```bash
 docker build -t asaas-emulator https://github.com/SpackiGabriel/asaas-emulator.git
 docker run --rm -p 8000:8000 asaas-emulator
 ```
 
-## Why
+Point your integration at `http://localhost:8000` instead of `https://api-sandbox.asaas.com`. That is the whole setup: no account, no network, any language.
 
-Testing an Asaas integration usually means one of two bad options:
+---
 
-- **The real sandbox.** It needs an account, it is slow, it is shared state you cannot reset, and it cannot be told "it is now three days later" or "this webhook endpoint is down".
-- **A hand-written mock.** It returns whatever the author remembered, usually a happy path, and slowly drifts away from the real API until tests pass against something that no longer exists.
+## The problem
 
-This project takes a third route: an emulator that keeps real state (balances go up and down, money moves, events are queued), behaves deterministically, and is checked against the real sandbox by a contract test suite. A fake that lies is worse than no fake.
+The bugs that hurt a payment integration in production are rarely the happy path. They are the webhook that arrives twice, the endpoint that was down for an hour while events piled up, the charge that went overdue over the weekend, and the two payouts that raced for the same balance.
+
+Those are exactly the cases you **cannot** test well today:
+
+|  | Real sandbox | Hand-written mock | **asaas-emulator** |
+| --- | :---: | :---: | :---: |
+| Works offline, without an account | ✗ | ✓ | ✓ |
+| Clean state for every test | ✗ (shared, never reset) | ✓ | ✓ |
+| "It is now three days later" | ✗ | depends | ✓ |
+| Your webhook endpoint is down: retries, ordering, queue interruption | ✗ | rarely | ✓ |
+| Real balances: money in, fees, money out, overdraft refused | ✓ | rarely | ✓ |
+| Deterministic ids and responses | ✗ | ✓ | ✓ |
+| Stays faithful to the real API over time | ✓ | ✗ (drifts silently) | ✓ (contract test suite) |
+| Fast enough for every test run | ✗ | ✓ | ✓ |
+
+A mock returns whatever its author remembered. This emulator keeps real state, moves real (fake) money, delivers real HTTP webhooks, and is checked against the actual sandbox by a contract test suite. **A fake that lies is worse than no fake.**
+
+## How it fits
+
+```mermaid
+flowchart LR
+    subgraph yours [Your project]
+        app[Your application]
+        hook[Your webhook endpoint]
+        tests[Your test suite]
+    end
+    emu[(asaas-emulator)]
+    sandbox[Asaas sandbox]
+
+    app -- "/v3 API, same paths and payloads" --> emu
+    emu -- "POST event + asaas-access-token" --> hook
+    tests -- "/_emulator: reset, move time, settle, inspect" --> emu
+    emu -. "contract tests keep it honest" .-> sandbox
+```
+
+## A 30-second tour
+
+```bash
+H='access_token: $aact_local'; API=http://localhost:8000
+
+# A customer and a Pix charge
+curl -s -X POST $API/v3/customers -H "$H" -d '{"name": "Maria Souza", "cpfCnpj": "52998224725"}'
+curl -s -X POST $API/v3/payments  -H "$H" \
+  -d '{"customer": "cus_000000000001", "billingType": "PIX", "value": 101.99, "dueDate": "2030-01-10"}'
+
+# The customer pays: same sandbox action Asaas offers
+curl -s -X POST $API/v3/sandbox/payment/pay_000000000001/confirm -H "$H"
+curl -s $API/v3/finance/balance -H "$H"     # {"balance": 100.0}   (1.99 fee deducted)
+
+# Pay someone out over Pix
+curl -s -X POST $API/v3/transfers -H "$H" \
+  -d '{"value": 60, "pixAddressKey": "owner@example.com", "pixAddressKeyType": "EMAIL"}'
+curl -s $API/v3/finance/balance -H "$H"     # {"balance": 40.0}
+```
+
+Ids are sequential (`cus_000000000001`, `pay_000000000001`, ...), so the same test against a fresh emulator always produces the same traffic.
+
+## Recipes for the bugs that matter
+
+**Your receiver must survive duplicate deliveries.** Delivery is at-least-once, so a retried event keeps its `id`. Make your endpoint fail once and assert you processed the payment only once:
+
+```python
+# your endpoint answers 500 on the first call, 200 afterwards
+asaas.post("/_emulator/webhooks/deliver")   # attempt 1 fails
+asaas.post("/_emulator/webhooks/deliver")   # attempt 2, same event id
+assert payments_processed == 1
+```
+
+**Your endpoint was down.** After 15 consecutive failures the webhook is marked `interrupted` and the queue stops, as documented. Events keep piling up. Set `interrupted` back to `false` and they arrive in order:
+
+```bash
+curl -X PUT $API/v3/webhooks/$WEBHOOK_ID -H "$H" -d '{"interrupted": false}'
+```
+
+**Charges go overdue while nobody is looking.**
+
+```bash
+curl -X POST $API/_emulator/clock -d '{"advanceDays": 3}'
+# pending charges past their due date are now OVERDUE, and PAYMENT_OVERDUE was emitted
+```
+
+**Payouts without funds, or racing each other.** Balances start at zero and debits are atomic. Eight concurrent transfers against a balance that covers three: exactly three succeed. There is a test for that.
+
+**A payout fails after it was accepted.** Run with `ASAAS_EMULATOR_TRANSFER_MODE=manual`, then decide the outcome:
+
+```bash
+curl -X POST $API/_emulator/transfers/$TRANSFER_ID/fail -H "$H" -d '{"failReason": "Chave Pix inexistente"}'
+# status FAILED, money returned to the balance, TRANSFER_FAILED emitted
+```
+
+## Use it from any language
+
+It is an HTTP server, so anything that can call the real API can call the emulator. Runnable examples:
+
+- **Python / pytest**: [`examples/python-pytest`](examples/python-pytest/test_billing_flow.py), with a fixture that resets and freezes the emulator before each test.
+- **Node.js**: [`examples/node/payout.mjs`](examples/node/payout.mjs), using only the built-in `fetch`.
+- **Docker Compose**: [`examples/docker-compose.yml`](examples/docker-compose.yml), to run your app next to it.
+
+In GitHub Actions:
+
+```yaml
+- run: |
+    pip install git+https://github.com/SpackiGabriel/asaas-emulator.git
+    asaas-emulator --port 8000 &
+    until curl -fs localhost:8000/_emulator/health; do sleep 0.5; done
+- run: pytest
+  env:
+    ASAAS_BASE_URL: http://localhost:8000
+```
 
 ## What it emulates
 
@@ -29,87 +145,74 @@ This project takes a third route: an emulator that keeps real state (balances go
 | Sandbox actions | `POST /v3/sandbox/payment/{id}/confirm`, `POST /v3/sandbox/payment/{id}/overdue` |
 | Balance | `GET /v3/finance/balance` |
 | Transfers | `POST/GET /v3/transfers`, `GET /v3/transfers/{id}`, `DELETE /v3/transfers/{id}/cancel` |
-| Webhooks | `POST/GET /v3/webhooks`, `GET/PUT/DELETE /v3/webhooks/{id}`, plus actual delivery |
+| Webhooks | `POST/GET /v3/webhooks`, `GET/PUT/DELETE /v3/webhooks/{id}`, and actual delivery |
 
-Responses follow the shapes in the official OpenAPI reference: the `{"errors": [{"code", "description"}]}` error envelope, the `{"object": "list", "hasMore", "totalCount", ...}` list envelope, a bare `404` for unknown ids, and authentication through the `access_token` header.
+Responses follow the official OpenAPI reference: the `{"errors": [{"code", "description"}]}` envelope, the `{"object": "list", "hasMore", "totalCount", ...}` list envelope, a bare `404` for unknown ids, and authentication through the `access_token` header.
 
-Details that integrations commonly depend on are generated with real structure:
+The artefacts your code parses have real structure, not placeholders:
 
-- **Pix payloads** are valid BR Codes (EMV) with a correct CRC16, and `encodedImage` is a real, scannable QR code PNG.
-- **Boleto lines** are 47 digits and barcodes 44 digits in the FEBRABAN layout, with valid mod-10 and mod-11 check digits and the current due-date factor.
+- **Pix payloads** are valid BR Codes (EMV) with a correct CRC16, and `encodedImage` is a scannable QR code.
+- **Boleto lines and barcodes** follow the FEBRABAN layout (47 and 44 digits) with valid check digits and the current due-date factor.
 - **CPF and CNPJ** are validated by check digit, as the sandbox does.
 
-## Quick start
+## How it stays honest
 
-With Docker:
+Every behaviour is in one of two groups, and the README says which.
 
-```bash
-docker build -t asaas-emulator https://github.com/SpackiGabriel/asaas-emulator.git
-docker run --rm -p 8000:8000 asaas-emulator
-```
+**From the official documentation:** paths, request and response fields, status and event enums, error and list envelopes, the `access_token` and `asaas-access-token` headers, the webhook payload and event id format, at-least-once delivery, interruption after 15 consecutive failures, and the sandbox confirm and overdue actions.
 
-With pip (Python 3.11+):
+**Assumed until the contract suite confirms them against the sandbox:**
 
-```bash
-pip install git+https://github.com/SpackiGabriel/asaas-emulator.git
-asaas-emulator --port 8000
-```
+- which events a sandbox confirmation emits (the emulator emits `PAYMENT_RECEIVED` only);
+- the exact error `code` strings for validation failures and insufficient balance;
+- the default fee amounts and the transfer id format;
+- whether forcing overdue changes `dueDate` (the emulator keeps it).
 
-A published container image and PyPI package are planned for the first tagged release.
-
-A complete flow, from charge to payout:
+The contract suite in [`tests/conformance`](tests/conformance/test_contract.py) runs against the emulator by default and against the real sandbox with a key:
 
 ```bash
-H='access_token: $aact_local'
-API=http://localhost:8000
-
-# 1. A customer and a Pix charge
-curl -s -X POST $API/v3/customers -H "$H" -H 'Content-Type: application/json' \
-  -d '{"name": "Maria Souza", "cpfCnpj": "52998224725"}'
-curl -s -X POST $API/v3/payments -H "$H" -H 'Content-Type: application/json' \
-  -d '{"customer": "cus_000000000001", "billingType": "PIX", "value": 101.99, "dueDate": "2030-01-10"}'
-
-# 2. The customer pays (the same sandbox action Asaas offers)
-curl -s -X POST $API/v3/sandbox/payment/pay_000000000001/confirm -H "$H"
-curl -s $API/v3/finance/balance -H "$H"          # {"balance": 100.0}, after the 1.99 fee
-
-# 3. Pay someone out
-curl -s -X POST $API/v3/transfers -H "$H" -H 'Content-Type: application/json' \
-  -d '{"value": 60, "pixAddressKey": "owner@example.com", "pixAddressKeyType": "EMAIL"}'
-curl -s $API/v3/finance/balance -H "$H"          # {"balance": 40.0}
+ASAAS_CONFORMANCE_BASE_URL=https://api-sandbox.asaas.com \
+ASAAS_CONFORMANCE_API_KEY='$aact_...' \
+pytest -m conformance -v
 ```
 
-Ids are sequential (`cus_000000000001`, `pay_000000000001`, ...), so a fresh emulator always produces the same traffic for the same test.
+When the two disagree, the emulator is the side that changes. Found a difference? [Open a fidelity report](https://github.com/SpackiGabriel/asaas-emulator/issues/new?template=fidelity.yml).
 
-### In a test suite
+## Design decisions
 
-In GitHub Actions, start it before your tests and point your client at it:
+- **Every API key is its own account.** Customers, payments, balances and webhooks never cross between keys, so parallel tests, or every tenant of a multi-tenant product, can share one emulator.
+- **Balances start at zero.** A generous default balance hides the most common real failure. Fund an account the way you would in the sandbox, by confirming a charge, or set it with `PUT /_emulator/balance`.
+- **Debits are one conditional `UPDATE`.** "Read the balance, compare, write" is a race; `UPDATE ... WHERE balance >= amount` is not. Money cannot be double-spent, even under concurrent requests.
+- **State changes and their events commit together.** A payment never changes status without its webhook event being queued in the same transaction (a transactional outbox).
+- **State lives in SQLite, not in dictionaries.** Request handlers and the webhook worker share it safely, and pointing `ASAAS_EMULATOR_DATABASE` at a file keeps it across restarts without reissuing ids that already exist.
+- **Time is an input.** A controllable clock makes date-dependent behaviour testable instead of flaky.
 
-```yaml
-- run: |
-    pip install git+https://github.com/SpackiGabriel/asaas-emulator.git
-    asaas-emulator --port 8000 &
-    until curl -fs localhost:8000/_emulator/health; do sleep 0.5; done
-- run: pytest
-  env:
-    ASAAS_BASE_URL: http://localhost:8000
-```
+## Why this exists
 
-Reset state between tests with `POST /_emulator/reset`.
+This project grew out of [Soleira](https://soleira.app), a SaaS I built that automates the monthly financial close of property-management companies on top of Asaas: billing tenants, reconciling payments and paying property owners over Pix.
 
-## Behaviour worth knowing
+Testing that kind of money flow against the sandbox all day was slow and unreliable, so Soleira had its own in-process Asaas fake. Its first version was a simple mock, and that mock hid real bugs:
 
-**Every API key is a separate account.** Customers, payments, balances and webhooks never cross between keys, so parallel tests (or several tenants of a multi-tenant product) can share one emulator. Any non-empty key is accepted unless `ASAAS_EMULATOR_API_KEYS` restricts them.
+- it handed every account a generous starting balance, while a fresh sandbox account answers `{"balance": 0}`, the case that breaks first in production;
+- it debited balances with a read followed by a write, a race waiting to happen;
+- it kept state in memory, so a restart reissued ids that already existed in the database.
 
-**Balances start at zero.** A generous starting balance would hide the most common real failure. Fund an account the way you would in the sandbox (create a charge and confirm it), or set it directly with `PUT /_emulator/balance`.
+Fixing those taught the principles above. `asaas-emulator` is a clean-room, standalone rewrite of those ideas, so that any team integrating with Asaas, in any language, can test the hard cases without building their own fake.
 
-**Money cannot be double-spent.** Transfers debit the balance with a single conditional `UPDATE ... WHERE balance >= amount`, so concurrent requests cannot overdraw an account. There is a test that fires eight transfers at once to prove it.
+## Configuration
 
-**Webhooks fail the way real ones do.** Deliveries carry the `asaas-access-token` header, are retried on any non-2xx answer or network error, keep the same event `id` across retries (delivery is at-least-once, so receivers must deduplicate), respect `SEQUENTIALLY` ordering, and stop when the queue is interrupted after 15 consecutive failures, exactly as documented. Set `interrupted` back to `false` to resume.
-
-**Time is yours.** `POST /_emulator/clock` freezes or advances the date. Pending charges whose due date passes become `OVERDUE` and emit `PAYMENT_OVERDUE`; scheduled transfers settle.
-
-**State changes and their events commit together.** A payment never changes status without its webhook event being queued in the same transaction (a transactional outbox), so tests never see one without the other.
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ASAAS_EMULATOR_DATABASE` | `:memory:` | SQLite path; use a file to keep state across restarts |
+| `ASAAS_EMULATOR_API_KEYS` | (empty) | Comma-separated accepted keys; empty accepts any non-empty key |
+| `ASAAS_EMULATOR_FEE_PIX_PAYMENT` | `1.99` | Flat fee on Pix charges |
+| `ASAAS_EMULATOR_FEE_BOLETO_PAYMENT` | `1.99` | Flat fee on boleto charges |
+| `ASAAS_EMULATOR_FEE_PIX_TRANSFER` | `0.00` | Fee on outgoing Pix transfers |
+| `ASAAS_EMULATOR_FEE_TED_TRANSFER` | `0.00` | Fee on outgoing TED transfers |
+| `ASAAS_EMULATOR_TRANSFER_MODE` | `auto` | `auto` settles transfers immediately; `manual` waits for the control API |
+| `ASAAS_EMULATOR_DELIVERY_MODE` | `background` | `background` delivers webhooks continuously; `manual` only on request |
+| `ASAAS_EMULATOR_WEBHOOK_MAX_FAILURES` | `15` | Consecutive failures before a webhook is interrupted |
+| `ASAAS_EMULATOR_WEBHOOK_RETRY_SECONDS` | `1.0` | Delay before retrying a failed delivery |
 
 ## Control API
 
@@ -126,68 +229,31 @@ These endpoints do not exist in Asaas. They are how tests drive the emulator.
 | `GET /_emulator/deliveries` | Every webhook delivery attempt, with status and last error |
 | `POST /_emulator/webhooks/deliver` | Attempts all pending deliveries now, ignoring backoff |
 | `POST /_emulator/transfers/{id}/done` | Settles a pending transfer |
-| `POST /_emulator/transfers/{id}/fail` | Fails a pending transfer and returns the money; `{"failReason": "..."}` |
+| `POST /_emulator/transfers/{id}/fail` | Fails a pending transfer and returns the money |
 
-## Configuration
+## Roadmap
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `ASAAS_EMULATOR_DATABASE` | `:memory:` | SQLite path; use a file to keep state across restarts |
-| `ASAAS_EMULATOR_API_KEYS` | (empty) | Comma-separated accepted keys; empty accepts any key |
-| `ASAAS_EMULATOR_FEE_PIX_PAYMENT` | `1.99` | Flat fee on Pix charges |
-| `ASAAS_EMULATOR_FEE_BOLETO_PAYMENT` | `1.99` | Flat fee on boleto charges |
-| `ASAAS_EMULATOR_FEE_PIX_TRANSFER` | `0.00` | Fee on outgoing Pix transfers |
-| `ASAAS_EMULATOR_FEE_TED_TRANSFER` | `0.00` | Fee on outgoing TED transfers |
-| `ASAAS_EMULATOR_TRANSFER_MODE` | `auto` | `auto` settles transfers immediately; `manual` waits for the control API |
-| `ASAAS_EMULATOR_DELIVERY_MODE` | `background` | `background` delivers webhooks continuously; `manual` only on request |
-| `ASAAS_EMULATOR_WEBHOOK_MAX_FAILURES` | `15` | Consecutive failures before a webhook is interrupted |
-| `ASAAS_EMULATOR_WEBHOOK_RETRY_SECONDS` | `1.0` | Delay before retrying a failed delivery |
+- [x] Customers, Pix and boleto charges, sandbox actions, balance, transfers, webhooks
+- [x] Contract test suite against the real sandbox
+- [ ] Published container image and PyPI package
+- [ ] Refunds and partial refunds
+- [ ] Subscriptions and installments
+- [ ] Split payments
+- [ ] Card payments (tokenization, authorization and capture)
+- [ ] Request recording to replay real sandbox traffic as fixtures
 
-## Fidelity
+Card charges currently return a clear `unsupported_billingType` error instead of pretending.
 
-Every behaviour falls in one of two groups, and the difference matters.
+## Contributing
 
-**Taken from the official documentation:** endpoint paths, request and response fields, status and event enums, the error and list envelopes, the `access_token` and `asaas-access-token` headers, the webhook payload shape and event id format, at-least-once delivery, interruption after 15 consecutive failures, and the sandbox confirm and overdue actions.
-
-**Assumed, pending confirmation by the contract suite against the sandbox:**
-
-- which events a sandbox confirmation emits (the emulator emits `PAYMENT_RECEIVED`, not `PAYMENT_CONFIRMED` first);
-- the exact error `code` strings for validation failures and insufficient balance;
-- the default fee amounts and transfer id format;
-- whether forcing overdue changes `dueDate` (the emulator keeps it).
-
-If you find a difference, the contract suite is the place to prove it: add a failing test in `tests/conformance/` and the emulator is the side that changes.
-
-## Contract tests against the real sandbox
-
-`tests/conformance/` holds tests that must pass on both sides. By default they run against an in-process emulator. With a sandbox key they run against Asaas itself:
-
-```bash
-ASAAS_CONFORMANCE_BASE_URL=https://api-sandbox.asaas.com \
-ASAAS_CONFORMANCE_API_KEY='$aact_...' \
-pytest -m conformance -v
-```
-
-They create their own data and compare balances as deltas, because the sandbox is shared and never reset. CI runs them on every push to `main` when the `ASAAS_SANDBOX_API_KEY` secret is set.
-
-## Not emulated yet
-
-Card payments, subscriptions, installments, split, refunds and chargebacks, payment links, bill payments, anticipations, invoices (NFS-e) and subaccounts. Requests for card charges return a clear `unsupported_billingType` error instead of pretending.
-
-## Development
+Reports of the emulator disagreeing with the real API are the most valuable contribution. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 pip install -e ".[dev]"
-pytest              # unit, integration and contract tests against the emulator
+pytest
 ruff check src tests
 ```
 
-The code is small on purpose. `service.py` holds the provider's rules, `store.py` the SQLite state, `delivery.py` the webhook worker and `app.py` the HTTP surface.
+## License
 
-## Background
-
-This started from an in-process Asaas fake maintained inside a production SaaS that automates the monthly financial close for property-management companies on top of Asaas: billing tenants, reconciling payments and paying property owners. Most of the decisions above (zero starting balance, atomic debits, state shared through a database instead of memory, events committed with the change that caused them) came from bugs that a simpler mock had hidden. This project is a clean-room rewrite of those ideas as a standalone, language-agnostic tool.
-
-## Disclaimer
-
-Not affiliated with or endorsed by Asaas. "Asaas" is a trademark of its owner. This tool never talks to the real API except in the opt-in contract tests.
+[MIT](LICENSE). Not affiliated with or endorsed by Asaas; "Asaas" is a trademark of its owner. The emulator never talks to the real API, except in the opt-in contract tests.

@@ -1,0 +1,23 @@
+name: Emulate another endpoint or behaviour
+description: Ask for something the emulator does not cover yet.
+labels: ["enhancement"]
+body:
+  - type: input
+    id: endpoint
+    attributes:
+      label: Endpoint or behaviour
+      placeholder: POST /v3/payments/{id}/refund
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What are you trying to test?
+      description: The scenario in your integration that you cannot test today.
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: Link to the Asaas documentation
+      placeholder: https://docs.asaas.com/reference/...

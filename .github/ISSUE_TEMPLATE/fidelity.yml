@@ -1,0 +1,45 @@
+name: The emulator disagrees with Asaas
+description: The emulator behaves differently from the real Asaas API or sandbox.
+labels: ["fidelity"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. These reports are what keep the emulator honest.
+        **Remove API keys, CPF/CNPJ and any personal data before submitting.**
+  - type: input
+    id: endpoint
+    attributes:
+      label: Endpoint
+      placeholder: POST /v3/sandbox/payment/{id}/confirm
+    validations:
+      required: true
+  - type: textarea
+    id: request
+    attributes:
+      label: Request
+      description: Method, path and JSON body you sent.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: sandbox
+    attributes:
+      label: What the real sandbox returned
+      description: Status code and body, or the webhook events you received.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: emulator
+    attributes:
+      label: What the emulator returned
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Emulator version
+      description: From GET /_emulator/health
+      placeholder: 0.1.0
