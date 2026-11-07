@@ -1,6 +1,6 @@
 """HTTP surface: the Asaas v3 endpoints plus an emulator-only control API.
 
-Anything under /v3 behaves like the provider. Anything under /_emulator does not exist
+Anything under /v3 behaves like the provider. Anything under /_saci does not exist
 in the real API: it is how a test suite resets state, moves time, settles transfers or
 inspects what webhooks would have received.
 """
@@ -37,9 +37,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         dispatcher.stop()
 
     app = FastAPI(
-        title="asaas-emulator",
+        title="Saci",
         version=__version__,
-        description="Local, deterministic emulator of the Asaas v3 API.",
+        description="Saci: local, deterministic emulator of the Asaas v3 API.",
         lifespan=lifespan,
     )
     app.state.emulator = emulator
@@ -243,26 +243,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return (
             f"<!doctype html><title>Invoice {html.escape(p['id'])}</title>"
-            f"<h1>asaas-emulator invoice</h1><table>{rows}</table>"
+            f"<h1>Saci invoice</h1><table>{rows}</table>"
         )
 
     # -- control API (not part of Asaas) ----------------------------------------------
 
-    @app.get("/_emulator/health")
+    @app.get("/_saci/health")
     def health():
         return {"status": "ok", "version": __version__, "now": emulator.clock.now().isoformat()}
 
-    @app.post("/_emulator/reset")
+    @app.post("/_saci/reset")
     def reset():
         emulator.store.reset()
         emulator.clock.reset()
         return {"reset": True}
 
-    @app.get("/_emulator/clock")
+    @app.get("/_saci/clock")
     def get_clock():
         return {"now": emulator.clock.now().isoformat(), "frozen": emulator.clock.frozen}
 
-    @app.post("/_emulator/clock")
+    @app.post("/_saci/clock")
     async def set_clock(request: Request, data: dict = Depends(body)):
         if "now" in data:
             try:
@@ -274,28 +274,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         emulator.tick(base(request))
         return get_clock()
 
-    @app.put("/_emulator/balance")
+    @app.put("/_saci/balance")
     async def set_balance(data: dict = Depends(body), acc: str = Depends(account)):
         emulator.store.set_balance(acc, to_cents(data.get("balance", 0)))
         return emulator.balance(acc)
 
-    @app.get("/_emulator/events")
+    @app.get("/_saci/events")
     def events(acc: str = Depends(account)):
         return {"data": emulator.store.events(acc)}
 
-    @app.get("/_emulator/deliveries")
+    @app.get("/_saci/deliveries")
     def deliveries(acc: str = Depends(account)):
         return {"data": emulator.store.deliveries(acc)}
 
-    @app.post("/_emulator/webhooks/deliver")
+    @app.post("/_saci/webhooks/deliver")
     def deliver_now():
         return {"attempts": dispatcher.deliver_due(ignore_backoff=True)}
 
-    @app.post("/_emulator/transfers/{transfer_id}/done")
+    @app.post("/_saci/transfers/{transfer_id}/done")
     def transfer_done(request: Request, transfer_id: str, acc: str = Depends(account)):
         return emulator.complete_transfer(acc, transfer_id, base(request))
 
-    @app.post("/_emulator/transfers/{transfer_id}/fail")
+    @app.post("/_saci/transfers/{transfer_id}/fail")
     async def transfer_fail(
         transfer_id: str, data: dict = Depends(body), acc: str = Depends(account)
     ):

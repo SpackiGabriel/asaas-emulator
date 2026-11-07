@@ -4,20 +4,20 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
-from asaas_emulator.app import create_app
-from asaas_emulator.clock import Clock
-from asaas_emulator.config import Settings
-from asaas_emulator.errors import AsaasError
-from asaas_emulator.money import from_cents, to_cents
-from asaas_emulator.validators import cpf_cnpj, parse_date, positive_amount
+from saci.app import create_app
+from saci.clock import Clock
+from saci.config import Settings
+from saci.errors import AsaasError
+from saci.money import from_cents, to_cents
+from saci.validators import cpf_cnpj, parse_date, positive_amount
 
 
 def test_settings_are_read_from_the_environment(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("ASAAS_EMULATOR_API_KEYS", " key-a, key-b ,")
-    monkeypatch.setenv("ASAAS_EMULATOR_FEE_PIX_PAYMENT", "0.99")
-    monkeypatch.setenv("ASAAS_EMULATOR_TRANSFER_MODE", "manual")
-    monkeypatch.setenv("ASAAS_EMULATOR_DELIVERY_MODE", "manual")
-    monkeypatch.setenv("ASAAS_EMULATOR_WEBHOOK_MAX_FAILURES", "3")
+    monkeypatch.setenv("SACI_API_KEYS", " key-a, key-b ,")
+    monkeypatch.setenv("SACI_FEE_PIX_PAYMENT", "0.99")
+    monkeypatch.setenv("SACI_TRANSFER_MODE", "manual")
+    monkeypatch.setenv("SACI_DELIVERY_MODE", "manual")
+    monkeypatch.setenv("SACI_WEBHOOK_MAX_FAILURES", "3")
 
     settings = Settings.from_env()
 
@@ -30,7 +30,7 @@ def test_settings_are_read_from_the_environment(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.mark.parametrize("variable", ["TRANSFER_MODE", "DELIVERY_MODE"])
 def test_invalid_mode_fails_fast(monkeypatch: pytest.MonkeyPatch, variable: str):
-    monkeypatch.setenv(f"ASAAS_EMULATOR_{variable}", "sometimes")
+    monkeypatch.setenv(f"SACI_{variable}", "sometimes")
     with pytest.raises(ValueError, match=variable):
         Settings.from_env()
 
@@ -115,10 +115,10 @@ def test_clock_advances_when_not_frozen():
 
 
 def test_invalid_clock_value_is_a_400(client: TestClient):
-    assert client.post("/_emulator/clock", json={"now": "yesterday"}).status_code == 400
+    assert client.post("/_saci/clock", json={"now": "yesterday"}).status_code == 400
 
 
 def test_health_reports_version(client: TestClient):
-    body = client.get("/_emulator/health").json()
+    body = client.get("/_saci/health").json()
     assert body["status"] == "ok"
     assert body["version"]

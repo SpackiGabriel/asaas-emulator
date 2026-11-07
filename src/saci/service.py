@@ -169,7 +169,7 @@ class Emulator:
         if billing_type == "CREDIT_CARD":
             raise invalid(
                 "unsupported_billingType",
-                "asaas-emulator does not emulate card payments yet.",
+                "Saci does not emulate card payments yet.",
             )
         value = positive_amount(body.get("value"))
         due = parse_date(body.get("dueDate"), "dueDate")

@@ -52,8 +52,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
           labels: |
-            org.opencontainers.image.title=asaas-emulator
-            org.opencontainers.image.description=Stateful local emulator of the Asaas payments API
+            org.opencontainers.image.title=saci
+            org.opencontainers.image.description=Saci: stateful local emulator of the Asaas payments API
             org.opencontainers.image.licenses=MIT
 
       # Build for the runner's platform first and prove the image actually serves requests.
@@ -62,22 +62,22 @@ jobs:
         with:
           context: .
           load: true
-          tags: asaas-emulator:test
+          tags: saci:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Smoke test
         run: |
-          docker run -d --name emulator -p 8000:8000 asaas-emulator:test
+          docker run -d --name saci -p 8000:8000 saci:test
           for i in $(seq 1 30); do
-            curl -fs localhost:8000/_emulator/health && break
+            curl -fs localhost:8000/_saci/health && break
             sleep 1
           done
           H='access_token: smoke'
           curl -fs -X POST localhost:8000/v3/customers -H "$H" \
             -d '{"name": "Smoke", "cpfCnpj": "52998224725"}'
           test "$(curl -fs localhost:8000/v3/finance/balance -H "$H")" = '{"balance":0.0}'
-          test "$(docker inspect --format '{{.State.Health.Status}}' emulator)" != unhealthy
+          test "$(docker inspect --format '{{.State.Health.Status}}' saci)" != unhealthy
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'

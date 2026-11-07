@@ -4,7 +4,7 @@ Why a database instead of dicts: the emulator is a server that test suites hit f
 several threads (request handlers plus the webhook worker), and a few operations must
 be atomic. Debiting a balance is the clearest example: "read balance, compare, write"
 across two statements is a race; a single conditional UPDATE is not. SQLite also lets
-the state survive a restart when ASAAS_EMULATOR_DATABASE points at a file.
+the state survive a restart when SACI_DATABASE points at a file.
 
 Resources are stored as JSON documents keyed by (kind, id) and partitioned by account.
 Each API key is an account, so one emulator can serve many tenants in parallel without

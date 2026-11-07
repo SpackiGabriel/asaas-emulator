@@ -9,8 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from fastapi.testclient import TestClient
 
-from asaas_emulator.app import create_app
-from asaas_emulator.config import Settings
+from saci.app import create_app
+from saci.config import Settings
 
 # Valid check digits, generated for tests only.
 CPF = "529.982.247-25"
@@ -26,7 +26,7 @@ def settings() -> Settings:
 @pytest.fixture
 def client(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(settings), headers={"access_token": "$aact_test_key"}) as c:
-        c.post("/_emulator/clock", json={"now": f"{TODAY.isoformat()}T09:00:00"})
+        c.post("/_saci/clock", json={"now": f"{TODAY.isoformat()}T09:00:00"})
         yield c
 
 

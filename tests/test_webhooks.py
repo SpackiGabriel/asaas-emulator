@@ -23,7 +23,7 @@ def register(client: TestClient, receiver: Receiver, **overrides) -> dict:
 
 
 def deliver(client: TestClient) -> int:
-    return client.post("/_emulator/webhooks/deliver").json()["attempts"]
+    return client.post("/_saci/webhooks/deliver").json()["attempts"]
 
 
 def test_webhook_never_echoes_its_token(client: TestClient, receiver: Receiver):
@@ -134,7 +134,7 @@ def test_unreachable_endpoint_counts_as_failure(client: TestClient, make_payment
 
 def test_events_are_inspectable_without_a_receiver(client: TestClient, make_payment):
     payment = make_payment(days=1)
-    client.post("/_emulator/clock", json={"advanceDays": 2})
-    events = client.get("/_emulator/events").json()["data"]
+    client.post("/_saci/clock", json={"advanceDays": 2})
+    events = client.get("/_saci/events").json()["data"]
     assert [e["event"] for e in events] == ["PAYMENT_CREATED", "PAYMENT_OVERDUE"]
     assert events[1]["payment"]["id"] == payment["id"]

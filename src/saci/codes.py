@@ -24,7 +24,7 @@ def _crc16_ccitt(payload: str) -> str:
     return f"{crc:04X}"
 
 
-def pix_payload(payment_id: str, amount: float, merchant: str = "ASAAS EMULATOR") -> str:
+def pix_payload(payment_id: str, amount: float, merchant: str = "SACI") -> str:
     """A static BR Code (EMV QRCPS) payload with a valid CRC16."""
     key = hashlib.sha256(payment_id.encode()).hexdigest()[:32]
     evp = f"{key[:8]}-{key[8:12]}-{key[12:16]}-{key[16:20]}-{key[20:32]}"

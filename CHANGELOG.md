@@ -4,7 +4,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [0.1.0] - 2026-11-06
 
-First public release.
+First public release of Saci, a local emulator of the Asaas payments API.
 
 ### Added
 
@@ -17,8 +17,10 @@ First public release.
 - Pix and TED transfers with automatic or manual settlement, cancellation and simulated failures.
 - Webhook configuration and real delivery: `asaas-access-token` header, retries with a stable event id, sequential ordering and queue interruption after consecutive failures.
 - One isolated account per API key.
-- Control API to reset state, move the clock, set balances and inspect events and deliveries.
-- Contract test suite that runs against both the emulator and the real Asaas sandbox.
+- Configuration through `SACI_*` environment variables, with optional SQLite persistence.
+- Control API under `/_saci` to reset state, move the clock, set balances and inspect events and deliveries.
+- Contract test suite that runs against both Saci and the real Asaas sandbox.
 - Docker image on GitHub Container Registry for amd64 and arm64, CI workflows, and examples in Python and Node.js.
+- Documentation in Portuguese (`README.md`) and English (`README.en.md`).
 
-[0.1.0]: https://github.com/SpackiGabriel/asaas-emulator/releases/tag/v0.1.0
+[0.1.0]: https://github.com/SpackiGabriel/saci/releases/tag/v0.1.0

@@ -20,7 +20,7 @@ import httpx
 
 from .service import Emulator
 
-log = logging.getLogger("asaas_emulator.delivery")
+log = logging.getLogger("saci.delivery")
 
 
 class Dispatcher:
@@ -72,7 +72,7 @@ class Dispatcher:
         store = self.emulator.store
         settings = self.emulator.settings
         event = store.event(delivery["event_id"])
-        headers = {"Content-Type": "application/json", "User-Agent": "asaas-emulator"}
+        headers = {"Content-Type": "application/json", "User-Agent": "saci"}
         if webhook.get("authToken"):
             headers["asaas-access-token"] = webhook["authToken"]
 

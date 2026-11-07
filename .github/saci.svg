@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Saci">
+  <path d="M20 98 C22 66 40 34 70 20 C86 12 102 16 106 30 C98 24 88 26 82 34 C92 52 98 74 100 98 Z" fill="#d7263d"/>
+  <path d="M82 34 C92 52 98 74 100 98 L86 98 C86 72 84 52 78 40 Z" fill="#a61b2e"/>
+  <path d="M20 98 L100 98" stroke="#a61b2e" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from asaas_emulator.config import Settings
+from saci.config import Settings
 
 PIX = {"pixAddressKey": "maria@example.com", "pixAddressKeyType": "EMAIL"}
 
@@ -65,13 +65,13 @@ class TestManualSettlement:
     def test_manual_mode_keeps_transfers_pending_until_settled(self, funded: TestClient):
         transfer = funded.post("/v3/transfers", json={"value": 10, **PIX}).json()
         assert transfer["status"] == "PENDING"
-        done = funded.post(f"/_emulator/transfers/{transfer['id']}/done").json()
+        done = funded.post(f"/_saci/transfers/{transfer['id']}/done").json()
         assert done["status"] == "DONE"
 
     def test_failed_transfer_returns_the_money(self, funded: TestClient):
         transfer = funded.post("/v3/transfers", json={"value": 10, **PIX}).json()
         failed = funded.post(
-            f"/_emulator/transfers/{transfer['id']}/fail", json={"failReason": "Chave inexistente"}
+            f"/_saci/transfers/{transfer['id']}/fail", json={"failReason": "Chave inexistente"}
         ).json()
         assert (failed["status"], failed["failReason"]) == ("FAILED", "Chave inexistente")
         assert funded.get("/v3/finance/balance").json() == {"balance": 100.0}
