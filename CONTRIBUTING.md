@@ -22,9 +22,10 @@ Even better, add a failing test to `tests/conformance/test_contract.py` that pas
 
 ```bash
 pip install -e ".[dev]"
-pytest
+pytest --cov
 ruff check src tests
 ruff format src tests
+mypy
 ```
 
 To run the contract tests against the real sandbox, you need a sandbox API key:

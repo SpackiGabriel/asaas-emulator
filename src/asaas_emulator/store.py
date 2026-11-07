@@ -93,7 +93,8 @@ class Store:
 
     def _fetchone(self, sql: str, params: tuple = ()) -> sqlite3.Row | None:
         with self._lock:
-            return self._db.execute(sql, params).fetchone()
+            row: sqlite3.Row | None = self._db.execute(sql, params).fetchone()
+            return row
 
     def _fetchall(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         with self._lock:
@@ -236,7 +237,10 @@ class Store:
 
     def event(self, event_id: str) -> dict[str, Any]:
         row = self._fetchone("SELECT payload FROM events WHERE id = ?", (event_id,))
-        return json.loads(row["payload"])
+        if row is None:
+            raise KeyError(event_id)
+        event: dict[str, Any] = json.loads(row["payload"])
+        return event
 
     def due_deliveries(self, now: float | None = None) -> list[sqlite3.Row]:
         now = time.time() if now is None else now
