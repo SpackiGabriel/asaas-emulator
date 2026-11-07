@@ -1,11 +1,11 @@
-name: The emulator disagrees with Asaas
+name: Saci disagrees with Asaas
 description: The emulator behaves differently from the real Asaas API or sandbox.
 labels: ["fidelity"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you. These reports are what keep the emulator honest.
+        Thank you. These reports are what keep Saci honest.
         **Remove API keys, CPF/CNPJ and any personal data before submitting.**
   - type: input
     id: endpoint
@@ -40,6 +40,6 @@ body:
   - type: input
     id: version
     attributes:
-      label: Emulator version
-      description: From GET /_emulator/health
+      label: Saci version
+      description: From GET /_saci/health
       placeholder: 0.1.0

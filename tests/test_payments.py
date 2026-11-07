@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from asaas_emulator.codes import _crc16_ccitt, _mod10, _mod11_barcode
+from saci.codes import _crc16_ccitt, _mod10, _mod11_barcode
 
 from .conftest import TODAY
 
@@ -57,7 +57,7 @@ def test_payment_cannot_be_confirmed_twice(client: TestClient, make_payment):
 
 def test_moving_the_clock_makes_pending_payments_overdue(client: TestClient, make_payment):
     payment = make_payment(days=1)
-    client.post("/_emulator/clock", json={"advanceDays": 2})
+    client.post("/_saci/clock", json={"advanceDays": 2})
     assert client.get(f"/v3/payments/{payment['id']}/status").json() == {"status": "OVERDUE"}
 
 

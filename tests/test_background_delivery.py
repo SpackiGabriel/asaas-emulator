@@ -5,7 +5,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from asaas_emulator.config import Settings
+from saci.config import Settings
 
 from .conftest import Receiver
 

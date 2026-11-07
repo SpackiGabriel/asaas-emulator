@@ -8,11 +8,11 @@
 
 services:
   asaas:
-    image: ghcr.io/spackigabriel/asaas-emulator:latest
+    image: ghcr.io/spackigabriel/saci:latest
     ports:
       - "8000:8000"
     environment:
-      ASAAS_EMULATOR_DATABASE: /data/asaas.db # keep state across restarts
+      SACI_DATABASE: /data/saci.db # keep state across restarts
     volumes:
       - asaas-data:/data
 

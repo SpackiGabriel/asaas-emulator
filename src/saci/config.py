@@ -17,7 +17,7 @@ DeliveryMode = Literal["background", "manual"]
 
 
 def _env(name: str, default: str) -> str:
-    return os.environ.get(f"ASAAS_EMULATOR_{name}", default)
+    return os.environ.get(f"SACI_{name}", default)
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class Settings:
     # "manual": they stay PENDING until settled through the control API.
     transfer_mode: TransferMode = "auto"
     # "background": a worker thread delivers webhooks as they are produced.
-    # "manual": deliveries only happen when POST /_emulator/webhooks/deliver is called.
+    # "manual": deliveries only happen when POST /_saci/webhooks/deliver is called.
     delivery_mode: DeliveryMode = "background"
     # Asaas documents that a webhook queue may be interrupted after 15 consecutive failures.
     webhook_max_failures: int = 15
@@ -62,9 +62,9 @@ class Settings:
         transfer_mode = _env("TRANSFER_MODE", "auto")
         delivery_mode = _env("DELIVERY_MODE", "background")
         if transfer_mode not in ("auto", "manual"):
-            raise ValueError(f"invalid ASAAS_EMULATOR_TRANSFER_MODE: {transfer_mode!r}")
+            raise ValueError(f"invalid SACI_TRANSFER_MODE: {transfer_mode!r}")
         if delivery_mode not in ("background", "manual"):
-            raise ValueError(f"invalid ASAAS_EMULATOR_DELIVERY_MODE: {delivery_mode!r}")
+            raise ValueError(f"invalid SACI_DELIVERY_MODE: {delivery_mode!r}")
         return cls(
             database=_env("DATABASE", ":memory:"),
             api_keys=frozenset(keys),

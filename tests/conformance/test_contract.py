@@ -25,8 +25,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from asaas_emulator.app import create_app
-from asaas_emulator.config import Settings
+from saci.app import create_app
+from saci.config import Settings
 
 pytestmark = pytest.mark.conformance
 
@@ -74,7 +74,7 @@ def balance(api: httpx.Client) -> float:
 def test_invalid_key_is_401_with_error_list(api: httpx.Client):
     response = api.get("/v3/customers", headers={"access_token": "$aact_definitely_invalid"})
     if not AGAINST_SANDBOX:
-        pytest.skip("the emulator accepts any key unless ASAAS_EMULATOR_API_KEYS is set")
+        pytest.skip("the emulator accepts any key unless SACI_API_KEYS is set")
     assert response.status_code == 401
     assert "errors" in response.json()
 

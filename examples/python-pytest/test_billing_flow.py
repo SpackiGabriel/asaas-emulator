@@ -1,6 +1,6 @@
 """How an application's test suite uses the emulator.
 
-Run the emulator first (docker or `asaas-emulator`), then:
+Run the emulator first (docker or `saci`), then:
 
     ASAAS_BASE_URL=http://localhost:8000 pytest examples/python-pytest
 
@@ -22,8 +22,8 @@ BASE_URL = os.environ.get("ASAAS_BASE_URL", "http://localhost:8000")
 def asaas():
     """A client for the emulator, reset to a clean, frozen state before each test."""
     with httpx.Client(base_url=BASE_URL, headers={"access_token": "$aact_example"}) as client:
-        client.post("/_emulator/reset")
-        client.post("/_emulator/clock", json={"now": "2026-03-02T09:00:00"})
+        client.post("/_saci/reset")
+        client.post("/_saci/clock", json={"now": "2026-03-02T09:00:00"})
         yield client
 
 
@@ -63,7 +63,7 @@ def test_payout_without_funds_is_refused(asaas: httpx.Client):
 
 def test_unpaid_charge_goes_overdue_when_time_passes(asaas: httpx.Client):
     payment = charge(asaas, 50, days=1)
-    asaas.post("/_emulator/clock", json={"advanceDays": 2})
+    asaas.post("/_saci/clock", json={"advanceDays": 2})
     assert asaas.get(f"/v3/payments/{payment['id']}/status").json() == {"status": "OVERDUE"}
-    events = [e["event"] for e in asaas.get("/_emulator/events").json()["data"]]
+    events = [e["event"] for e in asaas.get("/_saci/events").json()["data"]]
     assert events == ["PAYMENT_CREATED", "PAYMENT_OVERDUE"]

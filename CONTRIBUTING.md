@@ -6,17 +6,17 @@ Thanks for helping. The project has one rule that matters more than any other:
 
 ## Reporting a difference from the real API
 
-This is the most valuable contribution you can make. Open an issue with the **"The emulator disagrees with Asaas"** template and include the request, what the sandbox returned and what the emulator returned. Remove API keys and personal data first.
+This is the most valuable contribution you can make. Open an issue with the **"Saci disagrees with Asaas"** template and include the request, what the sandbox returned and what the emulator returned. Remove API keys and personal data first.
 
 Even better, add a failing test to `tests/conformance/test_contract.py` that passes against the sandbox and fails against the emulator. That test becomes the fix's acceptance criterion and keeps the behaviour from drifting again.
 
 ## Adding an endpoint
 
 1. Read the endpoint in the [official reference](https://docs.asaas.com/reference). Every reference page has an OpenAPI definition; append `.md` to its URL to read it as text.
-2. Put the business rule in `src/asaas_emulator/service.py`, and keep the route in `app.py` thin.
+2. Put the business rule in `src/saci/service.py`, and keep the route in `app.py` thin.
 3. If the change moves money or changes a status, emit the matching webhook event inside the same transaction.
 4. Add unit tests in `tests/`, and a contract test in `tests/conformance/` for anything both sides should agree on.
-5. If you had to guess a behaviour, list it under "Assumed" in the README's fidelity section.
+5. If you had to guess a behaviour, list it under "Assumed" in the fidelity section of both READMEs (`README.md` in Portuguese, `README.en.md` in English).
 
 ## Development setup
 

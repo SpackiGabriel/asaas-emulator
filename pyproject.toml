@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "asaas-emulator"
+name = "saci"
 version = "0.1.0"
-description = "A stateful, deterministic local emulator of the Asaas payments API for development and CI."
+description = "Saci: a stateful, deterministic local emulator of the Asaas payments API (Pix, boleto, transfers, webhooks) for development and CI."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Gabriel Spacki" }]
 license = "MIT"
 license-files = ["LICENSE"]
 keywords = [
-    "asaas", "payments", "pix", "boleto", "emulator", "mock-server", "testing",
+    "asaas", "payments", "pix", "boleto", "emulator", "test-double", "mock-server", "testing",
     "contract-testing", "webhooks", "fintech", "brazil",
 ]
 classifiers = [
@@ -46,15 +46,15 @@ dev = [
 ]
 
 [project.scripts]
-asaas-emulator = "asaas_emulator.__main__:main"
+saci = "saci.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/SpackiGabriel/asaas-emulator"
-Issues = "https://github.com/SpackiGabriel/asaas-emulator/issues"
-Changelog = "https://github.com/SpackiGabriel/asaas-emulator/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/SpackiGabriel/saci"
+Issues = "https://github.com/SpackiGabriel/saci/issues"
+Changelog = "https://github.com/SpackiGabriel/saci/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/asaas_emulator"]
+packages = ["src/saci"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -84,7 +84,7 @@ warn_redundant_casts = true
 strict_equality = true
 
 [tool.coverage.run]
-source = ["asaas_emulator"]
+source = ["saci"]
 branch = true
 omit = ["*/__main__.py"]
 
