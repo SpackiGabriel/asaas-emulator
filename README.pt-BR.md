@@ -6,6 +6,7 @@
 Pix, boleto, saldo, repasses e webhooks de verdade, num servidor local que se comporta como a API real.
 
 [![CI](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/ci.yml/badge.svg)](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/ci.yml)
+[![Docker image](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/docker.yml/badge.svg)](https://github.com/SpackiGabriel/asaas-emulator/pkgs/container/asaas-emulator)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 

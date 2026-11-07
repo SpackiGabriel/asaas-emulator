@@ -6,6 +6,7 @@
 Pix, boleto, balances, payouts and real webhook deliveries, in a local server that behaves like the real API.
 
 [![CI](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/ci.yml/badge.svg)](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/ci.yml)
+[![Docker image](https://github.com/SpackiGabriel/asaas-emulator/actions/workflows/docker.yml/badge.svg)](https://github.com/SpackiGabriel/asaas-emulator/pkgs/container/asaas-emulator)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -260,9 +261,12 @@ Reports of the emulator disagreeing with the real API are the most valuable cont
 
 ```bash
 pip install -e ".[dev]"
-pytest
+pytest --cov          # 80+ tests, coverage gate at 85%
 ruff check src tests
+mypy
 ```
+
+Every pull request runs lint and type checks, the test suite on Python 3.11 to 3.13, the examples against a live server, a package build verified with `twine`, a Dockerfile lint, and a real image build that is started and smoke-tested before anything is published.
 
 ## License
 

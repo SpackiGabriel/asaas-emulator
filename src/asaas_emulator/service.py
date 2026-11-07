@@ -479,7 +479,9 @@ class Emulator:
     def fail_transfer(self, account: str, transfer_id: str, reason: str) -> dict[str, Any]:
         return self._close_transfer(account, transfer_id, "FAILED", reason)
 
-    def _close_transfer(self, account: str, transfer_id: str, status: str, reason: str | None):
+    def _close_transfer(
+        self, account: str, transfer_id: str, status: str, reason: str | None
+    ) -> dict[str, Any]:
         with self.store.transaction():
             transfer = self._require("transfer", account, transfer_id)
             if transfer["status"] != "PENDING":

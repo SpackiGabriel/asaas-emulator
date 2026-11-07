@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .errors import invalid
 
@@ -65,12 +66,13 @@ def positive_amount(value: object, field: str = "value") -> float:
     if isinstance(value, bool) or not isinstance(value, int | float | str):
         raise invalid(f"invalid_{field}", f"O campo {field} deve ser informado.")
     try:
-        amount = float(value)
-    except ValueError as exc:
+        # str() first, so 10.005 is read as written instead of as its binary float.
+        amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation as exc:
         raise invalid(f"invalid_{field}", f"O campo {field} é inválido.") from exc
-    if amount <= 0:
+    if not amount.is_finite() or amount <= 0:
         raise invalid(f"invalid_{field}", f"O campo {field} deve ser maior que zero.")
-    return round(amount, 2)
+    return float(amount)
 
 
 def required_str(body: dict, field: str) -> str:
