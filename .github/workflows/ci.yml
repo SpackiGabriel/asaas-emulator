@@ -21,16 +21,7 @@ jobs:
       - run: ruff format --check src tests
       - run: pytest -q
 
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t asaas-emulator .
-      - name: Smoke test the image
-        run: |
-          docker run -d --name emulator -p 8000:8000 asaas-emulator
-          for i in $(seq 1 30); do curl -fs localhost:8000/_emulator/health && break; sleep 1; done
-          curl -fs -H 'access_token: ci' localhost:8000/v3/finance/balance
+  # The Docker image is built, smoke-tested and published by docker.yml.
 
   # Runs the contract suite against the real Asaas sandbox. Needs a repository secret
   # named ASAAS_SANDBOX_API_KEY; skipped on forks and when the secret is absent.

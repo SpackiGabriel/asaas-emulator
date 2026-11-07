@@ -14,8 +14,7 @@ Pix, boleto, saldo, repasses e webhooks de verdade, num servidor local que se co
 </div>
 
 ```bash
-docker build -t asaas-emulator https://github.com/SpackiGabriel/asaas-emulator.git
-docker run --rm -p 8000:8000 asaas-emulator
+docker run --rm -p 8000:8000 ghcr.io/spackigabriel/asaas-emulator
 ```
 
 Aponte sua integração para `http://localhost:8000` em vez de `https://api-sandbox.asaas.com`. É só isso: sem conta, sem rede, em qualquer linguagem.
@@ -122,17 +121,27 @@ curl -X POST $API/_emulator/transfers/$TRANSFER_ID/fail -H "$H" -d '{"failReason
 - **Node.js**: [`examples/node/payout.mjs`](examples/node/payout.mjs), só com o `fetch` nativo.
 - **Docker Compose**: [`examples/docker-compose.yml`](examples/docker-compose.yml), para rodar sua aplicação ao lado dele.
 
-No GitHub Actions:
+No GitHub Actions, rode como service container ao lado dos seus testes:
 
 ```yaml
-- run: |
-    pip install git+https://github.com/SpackiGabriel/asaas-emulator.git
-    asaas-emulator --port 8000 &
-    until curl -fs localhost:8000/_emulator/health; do sleep 0.5; done
-- run: pytest
-  env:
-    ASAAS_BASE_URL: http://localhost:8000
+services:
+  asaas:
+    image: ghcr.io/spackigabriel/asaas-emulator
+    ports: ["8000:8000"]
+steps:
+  - run: pytest
+    env:
+      ASAAS_BASE_URL: http://localhost:8000
 ```
+
+Para manter o estado entre reinícios, monte um volume e aponte o banco para ele:
+
+```bash
+docker run --rm -p 8000:8000 -v asaas-data:/data \
+  -e ASAAS_EMULATOR_DATABASE=/data/asaas.db ghcr.io/spackigabriel/asaas-emulator
+```
+
+Tags: `latest` e `X.Y.Z` para releases, `edge` para a `main` atual. Imagens para `linux/amd64` e `linux/arm64`.
 
 ## O que ele emula
 

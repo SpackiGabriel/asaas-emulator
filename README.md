@@ -14,8 +14,7 @@ Pix, boleto, balances, payouts and real webhook deliveries, in a local server th
 </div>
 
 ```bash
-docker build -t asaas-emulator https://github.com/SpackiGabriel/asaas-emulator.git
-docker run --rm -p 8000:8000 asaas-emulator
+docker run --rm -p 8000:8000 ghcr.io/spackigabriel/asaas-emulator
 ```
 
 Point your integration at `http://localhost:8000` instead of `https://api-sandbox.asaas.com`. That is the whole setup: no account, no network, any language.
@@ -122,17 +121,27 @@ It is an HTTP server, so anything that can call the real API can call the emulat
 - **Node.js**: [`examples/node/payout.mjs`](examples/node/payout.mjs), using only the built-in `fetch`.
 - **Docker Compose**: [`examples/docker-compose.yml`](examples/docker-compose.yml), to run your app next to it.
 
-In GitHub Actions:
+In GitHub Actions, run it as a service container next to your tests:
 
 ```yaml
-- run: |
-    pip install git+https://github.com/SpackiGabriel/asaas-emulator.git
-    asaas-emulator --port 8000 &
-    until curl -fs localhost:8000/_emulator/health; do sleep 0.5; done
-- run: pytest
-  env:
-    ASAAS_BASE_URL: http://localhost:8000
+services:
+  asaas:
+    image: ghcr.io/spackigabriel/asaas-emulator
+    ports: ["8000:8000"]
+steps:
+  - run: pytest
+    env:
+      ASAAS_BASE_URL: http://localhost:8000
 ```
+
+To keep state across restarts, mount a volume and point the database at it:
+
+```bash
+docker run --rm -p 8000:8000 -v asaas-data:/data \
+  -e ASAAS_EMULATOR_DATABASE=/data/asaas.db ghcr.io/spackigabriel/asaas-emulator
+```
+
+Tags: `latest` and `X.Y.Z` for releases, `edge` for the current `main`. Images are built for `linux/amd64` and `linux/arm64`.
 
 ## What it emulates
 
@@ -235,7 +244,8 @@ These endpoints do not exist in Asaas. They are how tests drive the emulator.
 
 - [x] Customers, Pix and boleto charges, sandbox actions, balance, transfers, webhooks
 - [x] Contract test suite against the real sandbox
-- [ ] Published container image and PyPI package
+- [x] Container image on GitHub Container Registry (amd64 and arm64)
+- [ ] PyPI package
 - [ ] Refunds and partial refunds
 - [ ] Subscriptions and installments
 - [ ] Split payments

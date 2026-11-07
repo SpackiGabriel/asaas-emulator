@@ -19,6 +19,6 @@ First public release.
 - One isolated account per API key.
 - Control API to reset state, move the clock, set balances and inspect events and deliveries.
 - Contract test suite that runs against both the emulator and the real Asaas sandbox.
-- Docker image, CI workflow, and examples in Python and Node.js.
+- Docker image on GitHub Container Registry for amd64 and arm64, CI workflows, and examples in Python and Node.js.
 
 [0.1.0]: https://github.com/SpackiGabriel/asaas-emulator/releases/tag/v0.1.0
