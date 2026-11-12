@@ -7,4 +7,4 @@
 - [ ] `pytest` passes
 - [ ] Added or updated tests for the change
 - [ ] Ran the contract tests against the real sandbox (`pytest -m conformance` with a sandbox key), or explained why not
-- [ ] Listed any assumed behaviour in the fidelity section of both READMEs
+- [ ] Updated `README.md` and `README.en.md` if behaviour changed, listing any assumed behaviour in their fidelity sections
