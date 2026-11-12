@@ -1,5 +1,5 @@
 name: Saci disagrees with Asaas
-description: The emulator behaves differently from the real Asaas API or sandbox.
+description: Saci behaves differently from the real Asaas API or sandbox.
 labels: ["fidelity"]
 body:
   - type: markdown
@@ -33,7 +33,7 @@ body:
   - type: textarea
     id: emulator
     attributes:
-      label: What the emulator returned
+      label: What Saci returned
       render: json
     validations:
       required: true

@@ -22,7 +22,16 @@ Pix, boleto, balances, payouts and real webhook deliveries, in a local server th
 docker run --rm -p 8000:8000 ghcr.io/spackigabriel/saci
 ```
 
-Point your integration at `http://localhost:8000` instead of `https://api-sandbox.asaas.com`. That is the whole setup: no account, no network, any language.
+Point your integration at `http://localhost:8000` instead of `https://api-sandbox.asaas.com` and send any key in the `access_token` header. No account, no internet, any language.
+
+Without Docker, install it straight from GitHub (Python 3.11+):
+
+```bash
+pip install git+https://github.com/SpackiGabriel/saci
+saci --port 8000
+```
+
+With the server running, `http://localhost:8000/docs` lists every endpoint on an interactive page.
 
 ---
 
@@ -40,12 +49,10 @@ Those are exactly the cases you **cannot** test well today:
 | Your webhook endpoint is down: retries, ordering, queue interruption | ✗ | rarely | ✓ |
 | Real balances: money in, fees, money out, overdraft refused | ✓ | rarely | ✓ |
 | Deterministic ids and responses | ✗ | ✓ | ✓ |
-| Stays faithful to the real API over time | ✓ | ✗ (drifts silently) | ✓ (contract test suite) |
+| You can check it still matches the real API | ✓ | ✗ (drifts silently) | ✓ (contract tests) |
 | Fast enough for every test run | ✗ | ✓ | ✓ |
 
-A mock returns whatever its author remembered. Saci keeps real state, moves real (fake) money, delivers real HTTP webhooks, and is checked against the actual sandbox by a contract test suite. **A fake that lies is worse than no fake.**
-
-## How it fits
+A mock returns whatever its author remembered. Saci keeps state, moves (fake) money, delivers webhooks over HTTP, and ships a contract test suite that runs against both Saci and the Asaas sandbox. **A fake that lies is worse than no fake.**
 
 ```mermaid
 flowchart LR
@@ -60,7 +67,7 @@ flowchart LR
     app -- "/v3 API, same paths and payloads" --> saci
     saci -- "POST event + asaas-access-token" --> hook
     tests -- "/_saci: reset, move time, settle, inspect" --> saci
-    saci -. "contract tests keep it honest" .-> sandbox
+    saci -. "contract tests compare both" .-> sandbox
 ```
 
 ## A 30-second tour
@@ -75,68 +82,86 @@ curl -s -X POST $API/v3/payments  -H "$H" \
 
 # The customer pays: same sandbox action Asaas offers
 curl -s -X POST $API/v3/sandbox/payment/pay_000000000001/confirm -H "$H"
-curl -s $API/v3/finance/balance -H "$H"     # {"balance": 100.0}   (1.99 fee deducted)
+curl -s $API/v3/finance/balance -H "$H"     # {"balance":100.0}   (1.99 fee deducted)
 
 # Pay someone out over Pix
 curl -s -X POST $API/v3/transfers -H "$H" \
   -d '{"value": 60, "pixAddressKey": "owner@example.com", "pixAddressKeyType": "EMAIL"}'
-curl -s $API/v3/finance/balance -H "$H"     # {"balance": 40.0}
+curl -s $API/v3/finance/balance -H "$H"     # {"balance":40.0}
+
+# Everything that happened, in order
+curl -s $API/_saci/events -H "$H"           # PAYMENT_CREATED, PAYMENT_RECEIVED, TRANSFER_CREATED, TRANSFER_DONE
 ```
 
-Ids are sequential (`cus_000000000001`, `pay_000000000001`, ...), so the same test against a fresh Saci always produces the same traffic.
+Ids are sequential (`cus_000000000001`, `pay_000000000001`, ...). With the clock frozen, the same test against a freshly started Saci produces exactly the same responses.
 
-## Recipes for the bugs that matter
+## Receiving webhooks
 
-**Your receiver must survive duplicate deliveries.** Delivery is at-least-once, so a retried event keeps its `id`. Make your endpoint fail once and assert you processed the payment only once:
+Register your endpoint as you would on Asaas. `name`, `url`, `email` and `events` are required:
+
+```bash
+curl -s -X POST $API/v3/webhooks -H "$H" -d '{
+  "name": "my-app",
+  "url": "http://host.docker.internal:3000/webhooks/asaas",
+  "email": "dev@example.com",
+  "authToken": "local-secret-123",
+  "events": ["PAYMENT_RECEIVED", "PAYMENT_OVERDUE", "TRANSFER_DONE", "TRANSFER_FAILED"]
+}'
+```
+
+From then on, each subscribed event arrives as a `POST` in the documented shape, with the `authToken` in the `asaas-access-token` header:
+
+```json
+{
+  "id": "evt_00000000000000000000000000000002&2",
+  "event": "PAYMENT_RECEIVED",
+  "dateCreated": "2026-03-02 09:00:00",
+  "payment": { "object": "payment", "id": "pay_000000000001", "status": "RECEIVED", "...": "..." }
+}
+```
+
+Transfer events carry `transfer` instead of `payment`. A webhook only receives events produced after it was registered. Responses never return the `authToken`; they show `hasAuthToken: true`.
+
+If Saci runs in Docker and your application runs on the host, use `host.docker.internal` in the URL. On Linux that needs `--add-host=host.docker.internal:host-gateway` on `docker run`. Inside `docker compose`, use the service name (for example `http://app:3000/...`).
+
+You don't need a receiver to test: `GET /_saci/events` lists every event for the account, and `GET /_saci/deliveries` shows each delivery attempt with its HTTP status and last error.
+
+## In your tests
+
+Saci is just an HTTP server, so your tests talk to it over the network. A pattern that works well: before each test, wipe the state and freeze the clock.
 
 ```python
-# your endpoint answers 500 on the first call, 200 afterwards
-asaas.post("/_saci/webhooks/deliver")   # attempt 1 fails
-asaas.post("/_saci/webhooks/deliver")   # attempt 2, same event id
-assert payments_processed == 1
+@pytest.fixture
+def asaas():
+    with httpx.Client(base_url="http://localhost:8000", headers={"access_token": "$aact_test"}) as client:
+        client.post("/_saci/reset")
+        client.post("/_saci/clock", json={"now": "2026-03-02T09:00:00"})
+        yield client
 ```
 
-**Your endpoint was down.** After 15 consecutive failures the webhook is marked `interrupted` and the queue stops, as documented. Events keep piling up. Set `interrupted` back to `false` and they arrive in order:
+Complete examples:
 
-```bash
-curl -X PUT $API/v3/webhooks/$WEBHOOK_ID -H "$H" -d '{"interrupted": false}'
-```
+- **Python / pytest**: [`examples/python-pytest`](examples/python-pytest/test_billing_flow.py)
+- **Node.js**: [`examples/node/payout.mjs`](examples/node/payout.mjs), with nothing but the built-in `fetch`
+- **Docker Compose**: [`examples/docker-compose.yml`](examples/docker-compose.yml), with your application next to Saci
 
-**Charges go overdue while nobody is looking.**
+The Python and Node ones run in CI on every pull request, against a real server.
 
-```bash
-curl -X POST $API/_saci/clock -d '{"advanceDays": 3}'
-# pending charges past their due date are now OVERDUE, and PAYMENT_OVERDUE was emitted
-```
-
-**Payouts without funds, or racing each other.** Balances start at zero and debits are atomic. Eight concurrent transfers against a balance that covers three: exactly three succeed. There is a test for that.
-
-**A payout fails after it was accepted.** Run with `SACI_TRANSFER_MODE=manual`, then decide the outcome:
-
-```bash
-curl -X POST $API/_saci/transfers/$TRANSFER_ID/fail -H "$H" -d '{"failReason": "Chave Pix inexistente"}'
-# status FAILED, money returned to the balance, TRANSFER_FAILED emitted
-```
-
-## Use it from any language
-
-It is an HTTP server, so anything that can call the real API can call Saci. Runnable examples:
-
-- **Python / pytest**: [`examples/python-pytest`](examples/python-pytest/test_billing_flow.py), with a fixture that resets and freezes the clock before each test.
-- **Node.js**: [`examples/node/payout.mjs`](examples/node/payout.mjs), using only the built-in `fetch`.
-- **Docker Compose**: [`examples/docker-compose.yml`](examples/docker-compose.yml), to run your app next to it.
-
-In GitHub Actions, run it as a service container next to your tests:
+In GitHub Actions, run it as a service container:
 
 ```yaml
-services:
-  asaas:
-    image: ghcr.io/spackigabriel/saci
-    ports: ["8000:8000"]
-steps:
-  - run: pytest
-    env:
-      ASAAS_BASE_URL: http://localhost:8000
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      asaas:
+        image: ghcr.io/spackigabriel/saci
+        ports: ["8000:8000"]
+    steps:
+      - uses: actions/checkout@v5
+      - run: pytest
+        env:
+          ASAAS_BASE_URL: http://localhost:8000
 ```
 
 To keep state across restarts, mount a volume and point the database at it:
@@ -146,9 +171,58 @@ docker run --rm -p 8000:8000 -v saci-data:/data \
   -e SACI_DATABASE=/data/saci.db ghcr.io/spackigabriel/saci
 ```
 
-Tags: `latest` and `X.Y.Z` for releases, `edge` for the current `main`. Images are built for `linux/amd64` and `linux/arm64`.
+Images are built for `linux/amd64` and `linux/arm64`. Tags: `latest`, `X.Y.Z` and `X.Y` on each release, `edge` for the current `main`, and `sha-<commit>` for every build.
 
-## What it emulates
+## Recipes for the bugs that matter
+
+**Your receiver must survive duplicate deliveries.** Delivery is at-least-once, and a retried event keeps its `id`. To control each attempt, start Saci with `SACI_DELIVERY_MODE=manual`: nothing is delivered until you call `/_saci/webhooks/deliver`.
+
+```python
+# your endpoint answers 500 on the first call, 200 afterwards
+asaas.post("/_saci/webhooks/deliver")   # attempt 1 fails
+asaas.post("/_saci/webhooks/deliver")   # attempt 2, same event id
+assert payments_processed == 1
+```
+
+**Your endpoint was down.** After 15 consecutive failures the webhook is marked `interrupted` and the queue stops, as the Asaas documentation describes. New events keep queuing. Set `interrupted` back to `false` and they arrive in order:
+
+```bash
+curl -X PUT $API/v3/webhooks/$WEBHOOK_ID -H "$H" -d '{"interrupted": false}'
+```
+
+With `sendType: "SEQUENTIALLY"` (the default), an event never overtakes an older one that is still failing. `NON_SEQUENTIALLY` delivers each one on its own.
+
+**Charges go overdue while nobody is watching.**
+
+```bash
+curl -X POST $API/_saci/clock -d '{"advanceDays": 3}'
+# pending charges past their due date are now OVERDUE, and PAYMENT_OVERDUE was emitted
+```
+
+**Payouts without funds, or racing for funds.** The balance starts at zero and debits are atomic. Eight concurrent transfers against a balance that covers three: exactly three succeed. There is [a test](tests/test_transfers.py) for that.
+
+**A scheduled payout.** With a future `scheduleDate`, the amount leaves the balance right away and the transfer stays `PENDING`. It becomes `DONE` when the clock reaches that date:
+
+```bash
+curl -s -X POST $API/_saci/clock -d '{"now": "2026-03-02T09:00:00"}'
+curl -s -X PUT $API/_saci/balance -H "$H" -d '{"balance": 500}'
+curl -s -X POST $API/v3/transfers -H "$H" \
+  -d '{"value": 100, "pixAddressKey": "owner@example.com", "pixAddressKeyType": "EMAIL", "scheduleDate": "2026-03-05"}'
+# PENDING, balance 400
+curl -s -X POST $API/_saci/clock -d '{"advanceDays": 3}'
+# DONE, TRANSFER_DONE emitted
+```
+
+**A payout fails after it was accepted.** Start with `SACI_TRANSFER_MODE=manual` so transfers stay `PENDING`, and decide the outcome:
+
+```bash
+curl -X POST $API/_saci/transfers/$TRANSFER_ID/fail -H "$H" -d '{"failReason": "Chave Pix inexistente"}'
+# status FAILED, money returned to the balance, TRANSFER_FAILED emitted
+```
+
+## Reference
+
+### Asaas endpoints
 
 | Area | Endpoints |
 | --- | --- |
@@ -161,26 +235,98 @@ Tags: `latest` and `X.Y.Z` for releases, `edge` for the current `main`. Images a
 | Transfers | `POST/GET /v3/transfers`, `GET /v3/transfers/{id}`, `DELETE /v3/transfers/{id}/cancel` |
 | Webhooks | `POST/GET /v3/webhooks`, `GET/PUT/DELETE /v3/webhooks/{id}`, and actual delivery |
 
-Responses follow the official OpenAPI reference: the `{"errors": [{"code", "description"}]}` envelope, the `{"object": "list", "hasMore", "totalCount", ...}` list envelope, a bare `404` for unknown ids, and authentication through the `access_token` header.
+Responses follow the official OpenAPI reference: errors as `{"errors": [{"code", "description"}]}`, lists as `{"object": "list", "hasMore", "totalCount", "limit", "offset", "data"}`, a bodiless `404` for unknown ids and `401` without a key.
 
-The artefacts your code parses have real structure, not placeholders:
+What your code parses has the real format:
 
-- **Pix payloads** are valid BR Codes (EMV) with a correct CRC16, and `encodedImage` is a scannable QR code.
-- **Boleto lines and barcodes** follow the FEBRABAN layout (47 and 44 digits) with valid check digits and the current due-date factor.
-- **CPF and CNPJ** are validated by check digit, as the sandbox does.
+- **Pix payload**: a valid BR Code (EMV) with a correct CRC16. The `encodedImage` is a QR code you can scan.
+- **Typeable line and barcode**: FEBRABAN layout (47 and 44 digits), with valid check digits and the current due-date factor.
+- **CPF and CNPJ**: validated by check digit, like the sandbox does.
 
-## How it stays honest
+**Rules worth knowing:**
 
-Every behaviour is in one of two groups, and the README says which.
+- Payments accept `PIX`, `BOLETO` and `UNDEFINED`. `CREDIT_CARD` returns `unsupported_billingType` instead of pretending to work.
+- Only `PENDING` or `OVERDUE` payments can be updated or deleted. Changing the `dueDate` puts the payment back to `PENDING`.
+- Cash receipts (`receiveInCash`) don't touch the balance, as on Asaas.
+- A Pix transfer needs `pixAddressKey` and `pixAddressKeyType` (`CPF`, `CNPJ`, `EMAIL`, `PHONE` or `EVP`); TED needs a `bankAccount` object. Only `PENDING` transfers can be cancelled, and cancelling returns the amount to the balance.
+- `invoiceUrl` and `bankSlipUrl` point to a plain HTML page served by Saci itself.
 
-**From the official documentation:** paths, request and response fields, status and event enums, error and list envelopes, the `access_token` and `asaas-access-token` headers, the webhook payload and event id format, at-least-once delivery, interruption after 15 consecutive failures, and the sandbox confirm and overdue actions.
+### Pagination and filters
 
-**Assumed until the contract suite confirms them against the sandbox:**
+Lists come newest first, with `offset` (default 0) and `limit` (default 10, max 100). The filters Saci understands; any other parameter is ignored:
 
-- which events a sandbox confirmation emits (Saci emits `PAYMENT_RECEIVED` only);
-- the exact error `code` strings for validation failures and insufficient balance;
-- the default fee amounts and the transfer id format;
+| List | Filters |
+| --- | --- |
+| `/v3/customers` | `name` (part of the name, case-insensitive), `email`, `cpfCnpj`, `groupName`, `externalReference` |
+| `/v3/payments` | `customer`, `billingType`, `status`, `externalReference`, `paymentDate`, and `[ge]`/`[le]` on `dueDate`, `paymentDate` and `dateCreated` |
+| `/v3/transfers` | `type`, `dateCreated[ge]`, `dateCreated[le]` |
+
+### Webhook events
+
+| Event | When |
+| --- | --- |
+| `PAYMENT_CREATED` | payment created |
+| `PAYMENT_UPDATED` | payment updated |
+| `PAYMENT_DELETED` / `PAYMENT_RESTORED` | payment deleted or restored |
+| `PAYMENT_RECEIVED` | sandbox confirmation or cash receipt |
+| `PAYMENT_RECEIVED_IN_CASH_UNDONE` | cash receipt undone |
+| `PAYMENT_OVERDUE` | overdue forced, or the clock passed the due date |
+| `TRANSFER_CREATED` / `TRANSFER_DONE` | transfer created or settled |
+| `TRANSFER_FAILED` / `TRANSFER_CANCELLED` | transfer failed or was cancelled |
+
+Customers don't produce events.
+
+### Control API
+
+These endpoints do not exist on Asaas. They are how tests drive Saci. The ones marked "account" require `access_token` and act only on that key's account; the others apply to the whole server.
+
+| Endpoint | Scope | What it does |
+| --- | --- | --- |
+| `GET /_saci/health` | server | Liveness, version and emulated time |
+| `POST /_saci/reset` | server | Wipes every account, resets id counters and returns the clock to normal |
+| `GET /_saci/clock` | server | Emulated time and whether it is frozen |
+| `POST /_saci/clock` | server | `{"now": "2026-01-31T09:00:00"}` freezes time; `{"advanceDays": 3}` moves it forward. Then applies due dates and scheduled transfers |
+| `PUT /_saci/balance` | account | `{"balance": 500}` sets the balance |
+| `GET /_saci/events` | account | Every event produced, in order |
+| `GET /_saci/deliveries` | account | Every webhook delivery attempt, with status and last error |
+| `POST /_saci/webhooks/deliver` | server | Attempts every pending delivery now, without waiting for the retry delay |
+| `POST /_saci/transfers/{id}/done` | account | Settles a pending transfer |
+| `POST /_saci/transfers/{id}/fail` | account | Fails a pending transfer and refunds the money |
+
+Unless frozen, the clock follows the machine's time. Due dates and scheduled transfers are only applied when you call `POST /_saci/clock`.
+
+### Configuration
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SACI_DATABASE` | `:memory:` | SQLite path; use a file to keep state across restarts |
+| `SACI_API_KEYS` | (empty) | Comma-separated accepted keys; empty accepts any non-empty key |
+| `SACI_FEE_PIX_PAYMENT` | `1.99` | Flat fee on Pix payments |
+| `SACI_FEE_BOLETO_PAYMENT` | `1.99` | Flat fee on boleto (and `UNDEFINED`) payments |
+| `SACI_FEE_PIX_TRANSFER` | `0.00` | Fee on Pix transfers |
+| `SACI_FEE_TED_TRANSFER` | `0.00` | Fee on TED transfers |
+| `SACI_TRANSFER_MODE` | `auto` | `auto` settles transfers immediately; `manual` waits for the control API |
+| `SACI_DELIVERY_MODE` | `background` | `background` delivers webhooks continuously; `manual` only when asked |
+| `SACI_WEBHOOK_MAX_FAILURES` | `15` | Consecutive failures before a webhook is interrupted |
+| `SACI_WEBHOOK_RETRY_SECONDS` | `1.0` | Delay before retrying a failed delivery |
+| `SACI_WEBHOOK_TIMEOUT_SECONDS` | `5.0` | How long to wait for your endpoint to answer |
+
+The `saci` command accepts `--host` and `--port` (or the `HOST` and `PORT` variables); the default is `0.0.0.0:8000`. An invalid `SACI_TRANSFER_MODE` or `SACI_DELIVERY_MODE` stops the server from starting.
+
+## Fidelity
+
+Every behaviour falls in one of two groups, and this README says which.
+
+**From the official documentation:** paths, request and response fields, status and event enums, the error and list envelopes, the `access_token` and `asaas-access-token` headers, the webhook payload and event id format, at-least-once delivery, interruption after 15 consecutive failures, and the confirm and overdue sandbox actions.
+
+**Assumed, until the contract suite confirms it against the sandbox:**
+
+- which events the sandbox confirmation emits (Saci emits only `PAYMENT_RECEIVED`);
+- the exact validation and insufficient-balance error codes;
+- default fees and the transfer id format;
 - whether forcing overdue changes `dueDate` (Saci keeps it).
+
+**Different on purpose:** webhook retries wait a short, fixed delay (1 second by default), far less than Asaas does, so your suite doesn't stall. Receipt links (`transactionReceiptUrl`) don't open anything.
 
 The contract suite in [`tests/conformance`](tests/conformance/test_contract.py) runs against Saci by default and against the real sandbox with a key:
 
@@ -190,87 +336,41 @@ ASAAS_CONFORMANCE_API_KEY='$aact_...' \
 pytest -m conformance -v
 ```
 
-When the two disagree, Saci is the side that changes. Found a difference? [Open a fidelity report](https://github.com/SpackiGabriel/saci/issues/new?template=fidelity.yml).
+When the two disagree, Saci is the one that changes. Found a difference? [Open a fidelity report](https://github.com/SpackiGabriel/saci/issues/new?template=fidelity.yml).
 
-## Design decisions
+## Why it works this way
 
-- **Every API key is its own account.** Customers, payments, balances and webhooks never cross between keys, so parallel tests, or every tenant of a multi-tenant product, can share one Saci.
-- **Balances start at zero.** A generous default balance hides the most common real failure. Fund an account the way you would in the sandbox, by confirming a charge, or set it with `PUT /_saci/balance`.
-- **Debits are one conditional `UPDATE`.** "Read the balance, compare, write" is a race; `UPDATE ... WHERE balance >= amount` is not. Money cannot be double-spent, even under concurrent requests.
-- **State changes and their events commit together.** A payment never changes status without its webhook event being queued in the same transaction (a transactional outbox).
-- **State lives in SQLite, not in dictionaries.** Request handlers and the webhook worker share it safely, and pointing `SACI_DATABASE` at a file keeps it across restarts without reissuing ids that already exist.
-- **Time is an input.** A controllable clock makes date-dependent behaviour testable instead of flaky.
+Saci came out of [Soleira](https://soleira.app), a SaaS I built to automate the monthly financial close for real estate agencies on top of Asaas: charging tenants, reconciling payments and paying landlords out over Pix. Testing that flow against the sandbox all day was slow and flaky, so Soleira had its own Asaas fake. The first version was a simple mock, and it hid real bugs. Each decision below fixes one of them:
 
-## Why this exists
+- **The balance starts at zero.** The old mock gave every account a generous balance, while a fresh sandbox account answers `{"balance": 0}`, the case that breaks first in production. Fund the account as you would on the sandbox, by confirming a charge, or with `PUT /_saci/balance`.
+- **A debit is one conditional `UPDATE`.** The mock read the balance and then wrote it, a race condition waiting to happen. `UPDATE ... WHERE balance >= amount` never spends the same money twice, even under concurrent requests.
+- **State lives in SQLite.** The mock kept everything in memory and, on restart, reissued ids that already existed in Soleira's database. With `SACI_DATABASE` pointing at a file, nothing is lost or repeated.
+- **A state change and its event commit together.** A payment never changes status without its event being queued in the same transaction (a transactional outbox).
+- **Time is an input.** A controllable clock turns date-dependent behaviour into something testable and repeatable.
+- **Each API key is an account.** Customers, payments, balances, webhooks and events never cross keys, so the tenants of a multi-tenant product can share one Saci. The clock, `reset` and id counters belong to the whole server: parallel tests that move time or reset state need a Saci each.
 
-This project grew out of [Soleira](https://soleira.app), a SaaS I built that automates the monthly financial close of property-management companies on top of Asaas: billing tenants, reconciling payments and paying property owners over Pix.
-
-Testing that kind of money flow against the sandbox all day was slow and unreliable, so Soleira had its own in-process Asaas fake. Its first version was a simple mock, and that mock hid real bugs:
-
-- it handed every account a generous starting balance, while a fresh sandbox account answers `{"balance": 0}`, the case that breaks first in production;
-- it debited balances with a read followed by a write, a race waiting to happen;
-- it kept state in memory, so a restart reissued ids that already existed in the database.
-
-Fixing those taught the principles above. Saci is a clean-room, standalone rewrite of those ideas, so that any team integrating with Asaas, in any language, can test the hard cases without building their own fake.
-
-## Configuration
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `SACI_DATABASE` | `:memory:` | SQLite path; use a file to keep state across restarts |
-| `SACI_API_KEYS` | (empty) | Comma-separated accepted keys; empty accepts any non-empty key |
-| `SACI_FEE_PIX_PAYMENT` | `1.99` | Flat fee on Pix charges |
-| `SACI_FEE_BOLETO_PAYMENT` | `1.99` | Flat fee on boleto charges |
-| `SACI_FEE_PIX_TRANSFER` | `0.00` | Fee on outgoing Pix transfers |
-| `SACI_FEE_TED_TRANSFER` | `0.00` | Fee on outgoing TED transfers |
-| `SACI_TRANSFER_MODE` | `auto` | `auto` settles transfers immediately; `manual` waits for the control API |
-| `SACI_DELIVERY_MODE` | `background` | `background` delivers webhooks continuously; `manual` only on request |
-| `SACI_WEBHOOK_MAX_FAILURES` | `15` | Consecutive failures before a webhook is interrupted |
-| `SACI_WEBHOOK_RETRY_SECONDS` | `1.0` | Delay before retrying a failed delivery |
-
-## Control API
-
-These endpoints do not exist in Asaas. They are how tests drive Saci.
-
-| Endpoint | What it does |
-| --- | --- |
-| `GET /_saci/health` | Liveness, version and current emulated time |
-| `POST /_saci/reset` | Wipes all accounts and resets the clock |
-| `GET /_saci/clock` | Current emulated time |
-| `POST /_saci/clock` | `{"now": "2026-01-31T09:00:00"}` freezes time; `{"advanceDays": 3}` moves it |
-| `PUT /_saci/balance` | `{"balance": 500}` sets the balance of the calling account |
-| `GET /_saci/events` | Every event produced for the calling account, in order |
-| `GET /_saci/deliveries` | Every webhook delivery attempt, with status and last error |
-| `POST /_saci/webhooks/deliver` | Attempts all pending deliveries now, ignoring backoff |
-| `POST /_saci/transfers/{id}/done` | Settles a pending transfer |
-| `POST /_saci/transfers/{id}/fail` | Fails a pending transfer and returns the money |
+Saci rewrites those ideas from scratch as a standalone tool, so any team integrating with Asaas, in any language, can test the hard cases without building its own fake.
 
 ## Roadmap
 
-- [x] Customers, Pix and boleto charges, sandbox actions, balance, transfers, webhooks
+- [x] Customers, Pix and boleto payments, sandbox actions, balance, transfers, webhooks
 - [x] Contract test suite against the real sandbox
-- [x] Container image on GitHub Container Registry (amd64 and arm64)
+- [x] Image on GitHub Container Registry (amd64 and arm64)
 - [ ] PyPI package
-- [ ] Refunds and partial refunds
+- [ ] Full and partial refunds
 - [ ] Subscriptions and installments
-- [ ] Split payments
-- [ ] Card payments (tokenization, authorization and capture)
-- [ ] Request recording to replay real sandbox traffic as fixtures
-
-Card charges currently return a clear `unsupported_billingType` error instead of pretending.
+- [ ] Payment splits
+- [ ] Credit cards (tokenization, authorization and capture)
+- [ ] Record real sandbox traffic and replay it as fixtures
 
 ## Contributing
 
-Reports of Saci disagreeing with the real API are the most valuable contribution. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The most valuable contribution is a report of a difference between Saci and the real API, ideally with a failing contract test. Roadmap items are welcome too. [CONTRIBUTING.md](CONTRIBUTING.md) explains where things live and how to run everything:
 
 ```bash
 pip install -e ".[dev]"
-pytest --cov          # 80+ tests, coverage gate at 85%
-ruff check src tests
-mypy
+pytest --cov
 ```
-
-Every pull request runs lint and type checks, the test suite on Python 3.11 to 3.13, the examples against a live server, a package build verified with `twine`, a Dockerfile lint, and a real image build that is started and smoke-tested before anything is published.
 
 ## License
 
