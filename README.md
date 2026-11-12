@@ -16,8 +16,6 @@ Pix, boleto, saldo, repasses e webhooks de verdade, num servidor local que se co
 
 </div>
 
-> No folclore, o Saci é o moleque que faz você jurar que viu uma coisa que não aconteceu. Este aqui faz o mesmo com o seu código: o Pix caiu, o boleto venceu, o repasse saiu e o webhook chegou, tudo sem sair da sua máquina.
-
 ```bash
 docker run --rm -p 8000:8000 ghcr.io/spackigabriel/saci
 ```

@@ -4,7 +4,7 @@
 
 # Saci
 
-**The trickster that fakes Asaas for your tests.**<br>
+**A fake Asaas for your tests.**<br>
 Pix, boleto, balances, payouts and real webhook deliveries, in a local server that behaves like the real API.
 
 [![CI](https://github.com/SpackiGabriel/saci/actions/workflows/ci.yml/badge.svg)](https://github.com/SpackiGabriel/saci/actions/workflows/ci.yml)
@@ -15,8 +15,6 @@ Pix, boleto, balances, payouts and real webhook deliveries, in a local server th
 [Português](README.md) · **English**
 
 </div>
-
-> In Brazilian folklore, the Saci is a one-legged trickster who makes you swear you saw something that never happened. This one does the same to your code: the Pix came in, the boleto went overdue, the payout left and the webhook arrived, all without leaving your machine.
 
 ```bash
 docker run --rm -p 8000:8000 ghcr.io/spackigabriel/saci
