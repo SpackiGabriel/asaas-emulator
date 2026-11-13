@@ -4,8 +4,8 @@
 
 # Saci
 
-**A fake Asaas for your tests.**<br>
-Pix, boleto, balances, payouts and real webhook deliveries, in a local server that behaves like the real API.
+**Test what goes wrong with Asaas payments.**<br>
+A local server that behaves like the Asaas API: Pix, boleto, balances, payouts and webhooks, with time and failures in your tests' hands.
 
 [![CI](https://github.com/SpackiGabriel/saci/actions/workflows/ci.yml/badge.svg)](https://github.com/SpackiGabriel/saci/actions/workflows/ci.yml)
 [![Docker image](https://github.com/SpackiGabriel/saci/actions/workflows/docker.yml/badge.svg)](https://github.com/SpackiGabriel/saci/pkgs/container/saci)
@@ -15,6 +15,10 @@ Pix, boleto, balances, payouts and real webhook deliveries, in a local server th
 [Português](README.md) · **English**
 
 </div>
+
+The bugs that hurt a payment integration are rarely on the happy path. They are the webhook that arrives twice, the endpoint that was down for an hour while events piled up, the charge that went overdue over the weekend, and the two payouts that raced for the same balance. On the sandbox you can't trigger most of them from a test: the clock doesn't move and the state is never reset.
+
+Saci runs the Asaas API on your machine and lets your tests trigger each of these cases: move the clock forward, redeliver webhooks after your endpoint failed, make a payout fail, send transfers that compete for the same balance.
 
 ```bash
 docker run --rm -p 8000:8000 ghcr.io/spackigabriel/saci
@@ -33,11 +37,9 @@ With the server running, `http://localhost:8000/docs` lists every endpoint on an
 
 ---
 
-## The problem
+## Why not the sandbox or a mock
 
-The bugs that hurt a payment integration in production are rarely the happy path. They are the webhook that arrives twice, the endpoint that was down for an hour while events piled up, the charge that went overdue over the weekend, and the two payouts that raced for the same balance.
-
-Those are exactly the cases you **cannot** test well today:
+What each option lets you test:
 
 |  | Real sandbox | Hand-written mock | **Saci** |
 | --- | :---: | :---: | :---: |
