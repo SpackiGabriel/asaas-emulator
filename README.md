@@ -4,8 +4,8 @@
 
 # Saci
 
-**O Asaas de mentira pros seus testes.**<br>
-Pix, boleto, saldo, repasses e webhooks de verdade, num servidor local que se comporta como a API real.
+**Teste o que dá errado com pagamentos no Asaas.**<br>
+Um servidor local que se comporta como a API do Asaas: Pix, boleto, saldo, repasses e webhooks, com o tempo e as falhas nas mãos dos seus testes.
 
 [![CI](https://github.com/SpackiGabriel/saci/actions/workflows/ci.yml/badge.svg)](https://github.com/SpackiGabriel/saci/actions/workflows/ci.yml)
 [![Docker image](https://github.com/SpackiGabriel/saci/actions/workflows/docker.yml/badge.svg)](https://github.com/SpackiGabriel/saci/pkgs/container/saci)
@@ -16,7 +16,9 @@ Pix, boleto, saldo, repasses e webhooks de verdade, num servidor local que se co
 
 </div>
 
-> No folclore, o Saci é o moleque que faz você jurar que viu uma coisa que não aconteceu. Este aqui faz o mesmo com o seu código: o Pix caiu, o boleto venceu, o repasse saiu e o webhook chegou, tudo sem sair da sua máquina.
+Os bugs que doem numa integração de pagamentos raramente estão no caminho feliz. Estão no webhook que chega duas vezes, no endpoint que ficou fora do ar por uma hora enquanto os eventos se acumulavam, na cobrança que venceu no fim de semana e nos dois repasses que disputaram o mesmo saldo. No sandbox, quase nenhum deles dá para provocar dentro de um teste: o relógio não anda e o estado nunca é limpo.
+
+O Saci roda a API do Asaas na sua máquina e deixa seus testes provocarem cada um desses casos: avançar o relógio, reentregar webhooks depois que seu endpoint falhou, fazer um repasse falhar, mandar transferências que disputam o mesmo saldo.
 
 ```bash
 docker run --rm -p 8000:8000 ghcr.io/spackigabriel/saci
@@ -35,11 +37,9 @@ Com o servidor no ar, `http://localhost:8000/docs` mostra todos os endpoints num
 
 ---
 
-## O problema
+## Por que não o sandbox ou um mock
 
-Os bugs que doem numa integração de pagamentos em produção raramente estão no caminho feliz. Estão no webhook que chega duas vezes, no endpoint que ficou fora do ar por uma hora enquanto os eventos se acumulavam, na cobrança que venceu no fim de semana e nos dois repasses que disputaram o mesmo saldo.
-
-São justamente os casos que hoje **não dá** para testar direito:
+O que cada opção permite testar:
 
 |  | Sandbox real | Mock feito à mão | **Saci** |
 | --- | :---: | :---: | :---: |
